@@ -1,6 +1,6 @@
 /**
  * Bot WhatsApp - Remesa Blink
- * Baileys con reconexión y comandos
+ * Baileys con reconexión, comandos y endpoint interno para notificaciones
  */
 import makeWASocket, {
   useMultiFileAuthState,
@@ -8,6 +8,7 @@ import makeWASocket, {
   fetchLatestBaileysVersion,
   type WASocket,
 } from "@whiskeysockets/baileys";
+import express from "express";
 import pino from "pino";
 import qrcode from "qrcode-terminal";
 import axios from "axios";
@@ -17,11 +18,20 @@ import { fileURLToPath } from "url";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const API_BASE = process.env.API_BASE_URL || "http://localhost:3000";
+const BOT_INTERNAL_PORT = parseInt(process.env.BOT_INTERNAL_PORT || "3002", 10);
+const BOT_INTERNAL_SECRET = process.env.BOT_INTERNAL_SECRET || "";
 
 const logger = pino({ level: process.env.DEBUG ? "debug" : "info" });
 
+let sock: WASocket | null = null;
+
 function log(msg: string, color = "\x1b[0m") {
   console.log(`${color}${msg}\x1b[0m`);
+}
+
+function toJid(wa: string): string {
+  const clean = wa.replace(/\D/g, "");
+  return `${clean}@s.whatsapp.net`;
 }
 
 async function connect() {
@@ -46,12 +56,13 @@ async function connect() {
     }
 
     if (connection === "close") {
+      sock = null;
       const statusCode = (lastDisconnect?.error as { output?: { statusCode?: number } })?.output?.statusCode;
       const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
 
       log(`[Bot] Desconectado. Reconectando: ${shouldReconnect}`, "\x1b[31m");
       if (shouldReconnect) {
-        setTimeout(connect, 3000);
+        setTimeout(() => connect().then((s) => { sock = s; }), 3000);
       }
     } else if (connection === "open") {
       log("[Bot] Conectado", "\x1b[32m");
@@ -88,6 +99,41 @@ async function connect() {
   });
 
   return sock;
+}
+
+function startInternalServer() {
+  const app = express();
+  app.use(express.json());
+
+  app.post("/internal/send", async (req, res) => {
+    const auth = req.headers["authorization"] || req.body?.secret;
+    const expected = BOT_INTERNAL_SECRET ? `Bearer ${BOT_INTERNAL_SECRET}` : null;
+    if (expected && auth !== expected) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    const { to, text } = req.body;
+    if (!to || !text) {
+      return res.status(400).json({ error: "to y text requeridos" });
+    }
+
+    if (!sock) {
+      return res.status(503).json({ error: "Bot no conectado" });
+    }
+
+    try {
+      const jid = toJid(to);
+      await sock.sendMessage(jid, { text });
+      res.json({ ok: true });
+    } catch (err) {
+      log(`[Bot] Error enviando a ${to}: ${(err as Error).message}`, "\x1b[31m");
+      res.status(500).json({ error: (err as Error).message });
+    }
+  });
+
+  app.listen(BOT_INTERNAL_PORT, () => {
+    log(`[Bot] Internal API en :${BOT_INTERNAL_PORT}`, "\x1b[36m");
+  });
 }
 
 async function handleCommand(
@@ -232,4 +278,10 @@ async function handleCommand(
   }
 }
 
-connect().catch(console.error);
+startInternalServer();
+
+connect()
+  .then((s) => {
+    sock = s;
+  })
+  .catch(console.error);

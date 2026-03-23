@@ -14,6 +14,7 @@ import {
   ejecutarPagoUsdcOnChain,
   getKeeperKeypair,
 } from "../services/solana.js";
+import { enviarNotificacionPago } from "../services/notificaciones.js";
 import { PublicKey } from "@solana/web3.js";
 
 const FRECUENCIA_SECONDS: Record<string, number> = {
@@ -76,7 +77,14 @@ export async function ejecutarPagos() {
         `[Keeper] Pago ${susc.tipo_activo || "SOL"} ejecutado: ${susc.id} -> ${txSig} | Blink: ${blinkUrl || "N/A"}${logExtras}`
       );
 
-      // TODO: Enviar notificación WhatsApp al destinatario (con Blink) y remitente
+      await enviarNotificacionPago({
+        destinatario_wa: susc.destinatario_wa,
+        remitente_wa: susc.remitente_wa,
+        montoHuman,
+        tipo_activo: susc.tipo_activo || "SOL",
+        blinkUrl,
+        blinkOnboarding,
+      });
     } catch (err) {
       console.error(`[Keeper] Error en suscripcion ${susc.id}:`, err);
     }

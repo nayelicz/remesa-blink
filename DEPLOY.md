@@ -46,6 +46,16 @@ fly deploy
 
 ---
 
+## Checklist pre-deploy
+
+- [ ] `BLINKS_BASE_URL` = URL pública del deploy (los Blinks la necesitan)
+- [ ] `DATABASE_URL` configurada y schema aplicado (`npm run db:schema`)
+- [ ] `KEEPER_PRIVATE_KEY` (base58 del keeper)
+- [ ] `ETHERFUSE_API_KEY` y `ETHERFUSE_API_URL` si usas off-ramp
+- [ ] Root directory: raíz del repo (Dockerfile en raíz)
+
+---
+
 ## Post-deploy
 
 1. **Airdrop keeper (devnet)**
@@ -60,7 +70,9 @@ fly deploy
    ```
    Luego fondear desde https://faucet.circle.com
 
-3. **Verificar**
+3. **Webhook Etherfuse** (ver sección Etherfuse más abajo)
+
+4. **Verificar**
    - `https://<tu-url>/health`
    - `https://<tu-url>/actions.json`
    - `https://<tu-url>/api/actions/enviar-remesa` (GET = metadata Blink)
@@ -80,4 +92,34 @@ ETHERFUSE_API_URL=https://api.sand.etherfuse.com   # prod: https://api.etherfuse
 ETHERFUSE_WEBHOOK_SECRET=<webhook_secret>
 ```
 
-Registrar webhook: `POST /api/webhooks/etherfuse` en el dashboard Etherfuse.
+### Configurar webhook Etherfuse (requerido para KYC)
+
+1. Despliega el backend y anota la URL pública (ej. `https://remesa-blink.onrender.com`).
+2. [Etherfuse Dashboard](https://devnet.etherfuse.com) → Webhooks → Create webhook.
+3. URL: `https://<tu-deploy>/api/webhooks/etherfuse`
+4. Eventos: `kyc_updated`, `customer_updated`, `order_updated` (o los que ofrezca).
+5. Copia el **signing secret** (base64) y configúralo como `ETHERFUSE_WEBHOOK_SECRET`.
+6. Redeploy o reinicia el backend para cargar la nueva variable.
+
+**Verificación**: Completa onboarding con un wallet de prueba → el webhook debe actualizar `beneficiarios_etherfuse.kyc_status = 'verified'` cuando Etherfuse apruebe. En sandbox la aprobación suele ser inmediata.
+
+---
+
+## Bot WhatsApp (notificaciones)
+
+El keeper puede enviar notificaciones al destinatario cuando ejecuta un pago. Requiere el bot corriendo como segundo servicio.
+
+**Bot** (puerto 3002 interno):
+```
+API_BASE_URL=https://<tu-backend-url>
+BOT_INTERNAL_PORT=3002
+BOT_INTERNAL_SECRET=<secreto_compartido>
+```
+
+**Backend** (añadir a vars):
+```
+BOT_INTERNAL_URL=http://<bot-service>:3002   # Docker: nombre del servicio; local: localhost:3002
+BOT_INTERNAL_SECRET=<mismo_secreto>
+```
+
+El bot necesita `auth_info` persistido (sesión Baileys). En Railway/Render el disco es efímero; considera volumen persistente o ejecutar el bot localmente durante el hackathon.

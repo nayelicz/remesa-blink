@@ -5,6 +5,7 @@ import { Router } from "express";
 import { createHmac, timingSafeEqual } from "crypto";
 import canonicalize from "canonicalize";
 import pool from "../db/pool.js";
+import { enviarMensaje } from "../services/notificaciones.js";
 
 const router = Router();
 const WEBHOOK_SECRET = process.env.ETHERFUSE_WEBHOOK_SECRET || "";
@@ -37,8 +38,22 @@ router.post("/etherfuse", async (req, res) => {
     if (eventType === "order_updated") {
       const status = payload?.status || payload?.orderStatus;
       if (status === "completed") {
-        console.log("[Webhook] Order completed:", payload?.orderId || payload?.order_id);
-        // TODO: Notificar al beneficiario por WhatsApp que MXN llegó
+        const orderId = payload?.orderId || payload?.order_id;
+        const customerId = payload?.customerId || payload?.customer_id;
+        console.log("[Webhook] Order completed:", orderId);
+        if (customerId) {
+          const row = await pool.query(
+            `SELECT destinatario_wa FROM beneficiarios_etherfuse WHERE etherfuse_customer_id = $1`,
+            [customerId]
+          );
+          const wa = row.rows[0]?.destinatario_wa;
+          if (wa) {
+            await enviarMensaje(
+              wa,
+              "Tus MXN han llegado a tu cuenta bancaria. Revisa tu app del banco."
+            );
+          }
+        }
       }
     }
 
