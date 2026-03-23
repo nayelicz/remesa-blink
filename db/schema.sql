@@ -97,6 +97,27 @@ CREATE TABLE IF NOT EXISTS blinks_pendientes (
 CREATE INDEX IF NOT EXISTS idx_blinks_pendientes_suscripcion ON blinks_pendientes(suscripcion_id);
 CREATE INDEX IF NOT EXISTS idx_blinks_pendientes_estado ON blinks_pendientes(estado);
 
+-- Tabla: beneficiarios_etherfuse
+-- Onboarding Etherfuse para off-ramp USDC -> MXN
+CREATE TABLE IF NOT EXISTS beneficiarios_etherfuse (
+    destinatario_solana VARCHAR(44) PRIMARY KEY,
+    destinatario_wa VARCHAR(50),
+    etherfuse_customer_id UUID NOT NULL,
+    etherfuse_bank_account_id UUID NOT NULL,
+    kyc_status VARCHAR(20) NOT NULL DEFAULT 'pending' CHECK (kyc_status IN ('pending', 'verified', 'failed')),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_beneficiarios_etherfuse_kyc ON beneficiarios_etherfuse(kyc_status);
+
+-- Trigger updated_at para beneficiarios_etherfuse
+DROP TRIGGER IF EXISTS trg_beneficiarios_etherfuse_updated_at ON beneficiarios_etherfuse;
+CREATE TRIGGER trg_beneficiarios_etherfuse_updated_at
+    BEFORE UPDATE ON beneficiarios_etherfuse
+    FOR EACH ROW
+    EXECUTE PROCEDURE update_updated_at_column();
+
 -- Trigger para updated_at en suscripciones
 CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$

@@ -6,6 +6,8 @@ import "dotenv/config";
 import express from "express";
 import suscripcionesRouter from "./routes/suscripciones.js";
 import cashbackRouter from "./routes/cashback.js";
+import etherfuseRouter from "./routes/etherfuse.js";
+import webhooksRouter from "./routes/webhooks.js";
 import blinksRouter from "./routes/blinks.js";
 
 const app = express();
@@ -28,6 +30,8 @@ app.get("/health", (_req, res) => {
 
 app.use("/api/suscripciones", suscripcionesRouter);
 app.use("/api/cashback", cashbackRouter);
+app.use("/api/etherfuse", etherfuseRouter);
+app.use("/api/webhooks", webhooksRouter);
 app.use("/", blinksRouter);
 
 app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {

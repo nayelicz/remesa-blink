@@ -71,3 +71,13 @@ fly deploy
 
 Debe ser la URL pública del deploy (ej. `https://remesa-blink.onrender.com`).
 Los Blinks usan esta URL para que wallets encuentren las acciones.
+
+## Etherfuse (off-ramp USDC -> MXN)
+
+```
+ETHERFUSE_API_KEY=<api_key>
+ETHERFUSE_API_URL=https://api.sand.etherfuse.com   # prod: https://api.etherfuse.com
+ETHERFUSE_WEBHOOK_SECRET=<webhook_secret>
+```
+
+Registrar webhook: `POST /api/webhooks/etherfuse` en el dashboard Etherfuse.

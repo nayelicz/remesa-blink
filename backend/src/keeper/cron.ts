@@ -3,6 +3,7 @@
  */
 import "dotenv/config";
 import cron from "node-cron";
+import pool from "../db/pool.js";
 import {
   listarSuscripcionesPendientesPago,
   actualizarSuscripcionDespuesPago,
@@ -50,12 +51,29 @@ export async function ejecutarPagos() {
           : Number(susc.monto) / 1e9;
       await registrarCashbackPorRemesa(susc.remitente_wa, montoHuman, susc.id);
 
-      const blinkUrl = process.env.BLINKS_BASE_URL
-        ? `${process.env.BLINKS_BASE_URL}/api/actions/enviar-remesa?amount=${montoHuman}&destination=${susc.destinatario_solana}`
-        : null;
+      const baseUrl = process.env.BLINKS_BASE_URL || process.env.BASE_URL;
+      let blinkUrl: string | null = null;
+      let blinkOnboarding: string | null = null;
+      if (baseUrl) {
+        if (susc.tipo_activo === "USDC") {
+          const efRow = await pool.query(
+            `SELECT 1 FROM beneficiarios_etherfuse WHERE destinatario_solana = $1 AND kyc_status = 'verified'`,
+            [susc.destinatario_solana]
+          );
+          if (efRow.rows[0]) {
+            blinkUrl = `${baseUrl}/api/actions/convertir-mxn?amount=${montoHuman}`;
+          } else {
+            blinkUrl = `${baseUrl}/api/actions/enviar-remesa-usdc`;
+            blinkOnboarding = `${baseUrl}/api/actions/onboarding-mxn`;
+          }
+        } else {
+          blinkUrl = `${baseUrl}/api/actions/enviar-remesa?amount=${montoHuman}&destination=${susc.destinatario_solana}`;
+        }
+      }
 
+      const logExtras = blinkOnboarding ? ` | Onboarding: ${blinkOnboarding}` : "";
       console.log(
-        `[Keeper] Pago ${susc.tipo_activo || "SOL"} ejecutado: ${susc.id} -> ${txSig} | Blink: ${blinkUrl || "N/A"}`
+        `[Keeper] Pago ${susc.tipo_activo || "SOL"} ejecutado: ${susc.id} -> ${txSig} | Blink: ${blinkUrl || "N/A"}${logExtras}`
       );
 
       // TODO: Enviar notificación WhatsApp al destinatario (con Blink) y remitente

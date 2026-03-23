@@ -3,6 +3,12 @@
   "private": true,
   "scripts": {
     "db:schema": "cd backend && npm run db:schema",
-    "blinks:inspector": "cd blinks-inspector && npm run dev"
+    "blinks:inspector": "cd blinks-inspector && npm run dev",
+    "dev": "cd backend && npm run dev",
+    "keeper": "cd backend && npm run keeper",
+    "keeper:airdrop": "cd backend && npm run keeper:airdrop",
+    "keeper:usdc-ata": "cd backend && npm run keeper:usdc-ata",
+    "keeper:run-once": "cd backend && npm run keeper:run-once",
+    "e2e:usdc": "cd backend && npm run e2e:usdc"
   }
 }

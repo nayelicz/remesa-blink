@@ -3,12 +3,30 @@
  * Uso: npx tsx run-e2e-usdc.ts
  */
 import "dotenv/config";
+import { Keypair } from "@solana/web3.js";
 import { crearSuscripcion } from "./src/services/suscripciones.js";
 import { ejecutarPagos } from "./src/keeper/cron.js";
+import { getConnection, getSuscripcionUsdcPda, getKeeperKeypair, USDC_MINT } from "./src/services/solana.js";
 import pool from "./src/db/pool.js";
 
-// Usar E2E_DEST para wallet único; evita "account already in use"
-const DEST = process.env.E2E_DEST ?? "Tvd1d4MaU6w42w14PAn2HahMGJkY8WnQd6t4tKnT8cT";
+// E2E_DEST fijo o generar uno nuevo para evitar "account already in use"
+const DEST =
+  process.env.E2E_DEST ??
+  Keypair.generate().publicKey.toBase58();
+
+async function waitForAccount(susc: { destinatario_solana: string }) {
+  const conn = getConnection();
+  const keeper = getKeeperKeypair();
+  const { PublicKey } = await import("@solana/web3.js");
+  const dest = new PublicKey(susc.destinatario_solana);
+  const [pda] = getSuscripcionUsdcPda(keeper.publicKey, dest, USDC_MINT);
+  for (let i = 0; i < 30; i++) {
+    const info = await conn.getAccountInfo(pda);
+    if (info) return;
+    await new Promise((r) => setTimeout(r, 1000));
+  }
+  throw new Error("Timeout esperando cuenta on-chain");
+}
 
 async function main() {
   console.log("1. Creando suscripción USDC...");
@@ -28,8 +46,8 @@ async function main() {
     [susc.id]
   );
 
-  console.log("3. Esperando confirmación on-chain (3s)...");
-  await new Promise((r) => setTimeout(r, 3000));
+  console.log("3. Esperando cuenta on-chain...");
+  await waitForAccount(susc);
 
   console.log("4. Ejecutando keeper...");
   await ejecutarPagos();

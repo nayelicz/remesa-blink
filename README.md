@@ -80,21 +80,26 @@ solana airdrop 2 <KEEPER_ADDRESS> --url devnet
 
 ## 5. Ejecutar servicios
 
-En terminales separadas:
+En terminales separadas (o desde raíz con `npm run`):
 
 ```bash
-# Backend API
-cd backend && npm install && npm run dev
+# Backend API + Blinks (unificado)
+npm run dev
+# o: cd backend && npm run dev
 
 # Keeper (cron cada hora)
-cd backend && npm run keeper
+npm run keeper
 
 # Bot WhatsApp
 cd bot && npm install && npm run start
-
-# Blinks
-cd blinks && npm install && npm run start
 ```
+
+**Scripts desde raíz:**
+- `npm run dev` — Backend + Blinks
+- `npm run keeper` — Keeper cron
+- `npm run keeper:airdrop` — Dirección para airdrop
+- `npm run keeper:usdc-ata` — Crear ATA USDC del keeper
+- `npm run e2e:usdc` — E2E: suscripción USDC + keeper
 
 ## 6. Flujo de prueba
 
@@ -102,7 +107,14 @@ cd blinks && npm install && npm run start
 2. **Registrar suscripción USDC**: `/recurrente 10 USDC diario 521234567890 F3bBUduLLoLFxCpEmPuQXvHwM2yshiHFuTvAcGJ4ANm3`
 3. **Ver suscripciones**: `/mis-remesas`
 4. **Cashback**: `/cashback`, `/generar-codigo`
-5. **Blinks**: `enviar-remesa` (SOL) y `enviar-remesa-usdc` (USDC)
+5. **Blinks**: `enviar-remesa` (SOL), `enviar-remesa-usdc` (USDC), `convertir-mxn` (USDC→MXN), `onboarding-mxn` (KYC+CLABE)
+
+### Flujo USDC → MXN (Etherfuse)
+
+1. Destinatario completa onboarding: `POST /api/etherfuse/onboarding-url` con `{ destinatario_solana, destinatario_wa? }` → obtiene URL Etherfuse (KYC + CLABE)
+2. Etherfuse envía webhook `kyc_updated` → actualizamos `beneficiarios_etherfuse.kyc_status = 'verified'`
+3. Keeper ejecuta pago USDC → incluye Blink `convertir-mxn` (si KYC ok) o `onboarding-mxn` (si pendiente)
+4. Destinatario usa Blink `convertir-mxn` → firma burn USDC → recibe MXN en SPEI
 
 ## Comandos del bot
 
@@ -126,6 +138,7 @@ cd blinks && npm install && npm run start
 | POST | /api/cashback/registrar-referido | Registrar referido |
 | GET | /api/cashback/:wa | Resumen cashback |
 | POST | /api/cashback/canjear | Canjear cashback |
+| POST | /api/etherfuse/onboarding-url | URL KYC+CLABE (destinatario_solana, destinatario_wa?) |
 
 ## Cronograma de implementación (7 días)
 
