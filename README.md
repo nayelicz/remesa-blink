@@ -98,17 +98,18 @@ cd blinks && npm install && npm run start
 
 ## 6. Flujo de prueba
 
-1. **Registrar suscripción**: Envía al bot `/recurrente 0.01 diario 521234567890 F3bBUduLLoLFxCpEmPuQXvHwM2yshiHFuTvAcGJ4ANm3`
-2. **Ver suscripciones**: `/mis-remesas`
-3. **Cashback**: `/cashback`, `/generar-codigo`
-4. **Blinks**: GET `http://localhost:3001/api/actions/enviar-remesa` para metadata. POST con `{ account, amount, destination }` para transacción.
+1. **Registrar suscripción SOL**: `/recurrente 0.01 diario 521234567890 F3bBUduLLoLFxCpEmPuQXvHwM2yshiHFuTvAcGJ4ANm3`
+2. **Registrar suscripción USDC**: `/recurrente 10 USDC diario 521234567890 F3bBUduLLoLFxCpEmPuQXvHwM2yshiHFuTvAcGJ4ANm3`
+3. **Ver suscripciones**: `/mis-remesas`
+4. **Cashback**: `/cashback`, `/generar-codigo`
+5. **Blinks**: `enviar-remesa` (SOL) y `enviar-remesa-usdc` (USDC)
 
 ## Comandos del bot
 
 | Comando | Descripción |
 |---------|-------------|
 | /start, /ayuda | Mensaje de bienvenida |
-| /recurrente [monto] [frecuencia] [destinatario_wa] [wallet_solana] | Registrar remesa recurrente |
+| /recurrente [monto] [SOL\|USDC] [frecuencia] [destinatario_wa] [wallet_solana] | Registrar remesa recurrente (SOL por defecto) |
 | /mis-remesas | Listar suscripciones activas |
 | /cashback, /mis-recompensas | Ver saldo cashback |
 | /generar-codigo | Generar código de referido |

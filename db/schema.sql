@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS suscripciones (
     destinatario_solana VARCHAR(44),
     monto BIGINT NOT NULL CHECK (monto > 0),
     frecuencia VARCHAR(20) NOT NULL CHECK (frecuencia IN ('diario', 'semanal', 'mensual')),
+    tipo_activo VARCHAR(10) NOT NULL DEFAULT 'SOL' CHECK (tipo_activo IN ('SOL', 'USDC')),
     proximo_pago TIMESTAMPTZ NOT NULL,
     ultimo_pago TIMESTAMPTZ,
     pda_address VARCHAR(44),
@@ -20,6 +21,17 @@ CREATE TABLE IF NOT EXISTS suscripciones (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- Migración: añadir tipo_activo si no existe (DBs existentes)
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'suscripciones' AND column_name = 'tipo_activo'
+    ) THEN
+        ALTER TABLE suscripciones ADD COLUMN tipo_activo VARCHAR(10) NOT NULL DEFAULT 'SOL' CHECK (tipo_activo IN ('SOL', 'USDC'));
+    END IF;
+END $$;
 
 CREATE INDEX IF NOT EXISTS idx_suscripciones_remitente_activa ON suscripciones(remitente_wa, activa);
 CREATE INDEX IF NOT EXISTS idx_suscripciones_destinatario ON suscripciones(destinatario_wa, activa);

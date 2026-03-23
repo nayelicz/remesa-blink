@@ -1,10 +1,14 @@
 /**
  * Servicio de suscripciones (DB + Anchor)
  */
+import { PublicKey } from "@solana/web3.js";
 import pool from "../db/pool.js";
 import {
   registrarSuscripcionOnChain,
+  registrarSuscripcionUsdcOnChain,
   getSuscripcionPda,
+  getSuscripcionUsdcPda,
+  USDC_MINT,
 } from "./solana.js";
 
 const FRECUENCIA_MAP: Record<string, number> = {
@@ -21,42 +25,61 @@ export interface NuevaSuscripcion {
   remitente_wa: string;
   destinatario_wa: string;
   destinatario_solana: string; // Requerido: wallet que recibe
-  monto: number; // en SOL
+  monto: number; // en SOL o USDC según tipo_activo
   frecuencia: "diario" | "semanal" | "mensual";
+  tipo_activo?: "SOL" | "USDC"; // por defecto SOL
 }
 
 export async function crearSuscripcion(data: NuevaSuscripcion) {
   const now = new Date();
   const intervalo = FRECUENCIA_MAP[data.frecuencia] || 86400;
   const proximo_pago = addSeconds(now, intervalo);
+  const tipo_activo = data.tipo_activo || "SOL";
 
   const destinatario = new PublicKey(data.destinatario_solana);
-
-  // Registrar en blockchain (keeper = remitente)
-  const montoLamports = BigInt(Math.round(data.monto * 1e9));
   const { getKeeperKeypair } = await import("./solana.js");
   const keeper = getKeeperKeypair();
-  const txSig = await registrarSuscripcionOnChain(
-    keeper.publicKey,
-    destinatario,
-    montoLamports,
-    data.frecuencia
-  );
 
-  const [pda] = getSuscripcionPda(keeper.publicKey, destinatario);
+  let txSig: string;
+  let pda: PublicKey;
+  let montoDb: number;
+
+  if (tipo_activo === "USDC") {
+    const montoRaw = BigInt(Math.round(data.monto * 1e6)); // USDC 6 decimals
+    txSig = await registrarSuscripcionUsdcOnChain(
+      keeper.publicKey,
+      destinatario,
+      montoRaw,
+      data.frecuencia,
+      USDC_MINT
+    );
+    [pda] = getSuscripcionUsdcPda(keeper.publicKey, destinatario, USDC_MINT);
+    montoDb = Math.round(data.monto * 1e6); // guardar raw para BIGINT
+  } else {
+    const montoLamports = BigInt(Math.round(data.monto * 1e9));
+    txSig = await registrarSuscripcionOnChain(
+      keeper.publicKey,
+      destinatario,
+      montoLamports,
+      data.frecuencia
+    );
+    [pda] = getSuscripcionPda(keeper.publicKey, destinatario);
+    montoDb = Math.round(data.monto * 1e9); // lamports
+  }
 
   const result = await pool.query(
     `INSERT INTO suscripciones (
-      remitente_wa, destinatario_wa, destinatario_solana, monto, frecuencia,
+      remitente_wa, destinatario_wa, destinatario_solana, monto, frecuencia, tipo_activo,
       proximo_pago, pda_address, activa
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, true)
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, true)
     RETURNING *`,
     [
       data.remitente_wa,
       data.destinatario_wa,
       data.destinatario_solana,
-      data.monto,
+      montoDb,
       data.frecuencia,
+      tipo_activo,
       proximo_pago,
       pda.toBase58(),
     ]

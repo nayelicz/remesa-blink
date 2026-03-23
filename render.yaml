@@ -1,0 +1,25 @@
+# Render - https://render.com
+# Crear Web Service, conectar repo, añadir env vars
+services:
+  - type: web
+    name: remesa-blink
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3000
+      - key: BASE_URL
+        sync: false  # https://remesa-blink.onrender.com
+      - key: BLINKS_BASE_URL
+        sync: false  # mismo que BASE_URL
+      - key: DATABASE_URL
+        sync: false
+      - key: SOLANA_RPC_URL
+        value: https://api.devnet.solana.com
+      - key: KEEPER_PRIVATE_KEY
+        sync: false
+      - key: PROGRAM_ID
+        value: B1G72CcRGHYc1UpG4o51VrJySLiwm3d7tCHbQiSb5vZ2
+      - key: RUN_KEEPER
+        value: "true"

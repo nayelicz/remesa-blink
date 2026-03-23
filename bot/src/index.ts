@@ -67,30 +67,46 @@ async function connect() {
 
   sock.ev.on("messages.upsert", async ({ messages }) => {
     for (const m of messages) {
-      if (m.key.fromMe || !m.message) continue;
+      if (!m.message) continue;
       const jid = m.key.remoteJid!;
+      const participant = m.key.participant;
+      const fromMe = m.key.fromMe ?? false;
       const text =
         m.message.conversation ||
         m.message.extendedTextMessage?.text ||
         "";
-      await handleCommand(sock, jid, text);
+      // Ignorar fromMe salvo en "mensaje a ti mismo" (comandos que empiezan con /)
+      if (fromMe && !text.trim().startsWith("/")) continue;
+      const replyJid = participant || jid;
+      log(`[Bot] Recibido de ${replyJid}: ${text.slice(0, 50)}${text.length > 50 ? "..." : ""}`, "\x1b[90m");
+      try {
+        await handleCommand(sock, replyJid, jid, text, fromMe);
+      } catch (err) {
+        log(`[Bot] Error: ${(err as Error).message}`, "\x1b[31m");
+      }
     }
   });
 
   return sock;
 }
 
-async function handleCommand(sock: WASocket, jid: string, text: string) {
-  const wa = jid.replace("@s.whatsapp.net", "");
+async function handleCommand(
+  sock: WASocket,
+  replyJid: string,
+  _chatJid: string,
+  text: string,
+  fromMe: boolean
+) {
+  const wa = replyJid.replace(/@.*/, "");
 
   const send = (msg: string) =>
-    sock.sendMessage(jid, { text: msg });
+    sock.sendMessage(replyJid, { text: msg });
 
   if (text.startsWith("/start") || text.startsWith("/ayuda")) {
     await send(
       `*Remesa Blink - Bot de Remesas Recurrentes*\n\n` +
         `Comandos:\n` +
-        `• /recurrente [monto] [frecuencia] [destinatario_wa] [wallet_solana] - Registrar remesa recurrente\n` +
+        `• /recurrente [monto] [SOL|USDC] [frecuencia] [destinatario_wa] [wallet_solana] - Remesa recurrente (SOL por defecto)\n` +
         `• /mis-remesas - Ver suscripciones activas\n` +
         `• /cashback o /mis-recompensas - Ver saldo cashback\n` +
         `• /generar-codigo - Generar código de referido\n` +
@@ -103,10 +119,17 @@ async function handleCommand(sock: WASocket, jid: string, text: string) {
   if (text.startsWith("/recurrente ")) {
     const parts = text.slice(11).trim().split(/\s+/);
     if (parts.length < 4) {
-      await send("Uso: /recurrente [monto] [diario|semanal|mensual] [destinatario_wa] [wallet_solana]");
+      await send("Uso: /recurrente [monto] [SOL|USDC] [diario|semanal|mensual] [destinatario_wa] [wallet_solana]");
       return;
     }
-    const [montoStr, frecuencia, destinatario_wa, wallet_solana] = parts;
+    let montoStr: string, frecuencia: string, destinatario_wa: string, wallet_solana: string;
+    let tipo_activo: "SOL" | "USDC" = "SOL";
+    if (parts.length >= 5 && /^(SOL|USDC)$/i.test(parts[1])) {
+      [montoStr, , frecuencia, destinatario_wa, wallet_solana] = parts;
+      tipo_activo = parts[1].toUpperCase() as "SOL" | "USDC";
+    } else {
+      [montoStr, frecuencia, destinatario_wa, wallet_solana] = parts;
+    }
     const monto = parseFloat(montoStr);
     if (isNaN(monto) || monto <= 0) {
       await send("Monto inválido");
@@ -117,6 +140,7 @@ async function handleCommand(sock: WASocket, jid: string, text: string) {
         remitente_wa: wa,
         destinatario_wa,
         destinatario_solana: wallet_solana,
+        tipo_activo,
         monto,
         frecuencia: frecuencia.toLowerCase(),
       });
@@ -138,8 +162,8 @@ async function handleCommand(sock: WASocket, jid: string, text: string) {
         await send("No tienes suscripciones activas.");
       } else {
         const lines = list.map(
-          (s: { monto: number; frecuencia: string; destinatario_wa: string }) =>
-            `• ${s.monto} SOL - ${s.frecuencia} -> ${s.destinatario_wa}`
+          (s: { monto: number; frecuencia: string; destinatario_wa: string; tipo_activo?: string }) =>
+            `• ${s.monto} ${s.tipo_activo || "SOL"} - ${s.frecuencia} -> ${s.destinatario_wa}`
         );
         await send("Tus remesas recurrentes:\n" + lines.join("\n"));
       }
@@ -202,8 +226,8 @@ async function handleCommand(sock: WASocket, jid: string, text: string) {
     return;
   }
 
-  // Comando no reconocido
-  if (text.trim().length > 0) {
+  // Comando no reconocido (no responder si es fromMe para evitar loop)
+  if (text.trim().length > 0 && !fromMe) {
     await send("Escribe /ayuda para ver los comandos disponibles.");
   }
 }

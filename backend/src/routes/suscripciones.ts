@@ -13,9 +13,10 @@ const router = Router();
 const crearSchema = z.object({
   remitente_wa: z.string().min(1),
   destinatario_wa: z.string().min(1),
-  destinatario_solana: z.string().length(32, 44),
+  destinatario_solana: z.string().min(32).max(44),
   monto: z.number().positive(),
   frecuencia: z.enum(["diario", "semanal", "mensual"]),
+  tipo_activo: z.enum(["SOL", "USDC"]).optional().default("SOL"),
 });
 
 router.post("/", async (req, res) => {

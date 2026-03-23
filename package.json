@@ -2,6 +2,7 @@
   "name": "remesa-blink",
   "private": true,
   "scripts": {
-    "db:schema": "cd backend && npm run db:schema"
+    "db:schema": "cd backend && npm run db:schema",
+    "blinks:inspector": "cd blinks-inspector && npm run dev"
   }
 }
