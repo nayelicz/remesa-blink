@@ -1,10 +1,14 @@
-# Remesa Blink - Backend + Blinks + Keeper
+# Remesa Blink - Backend + Blinks + Keeper + LidIA
 FROM node:20-alpine
+
+# Dependencias nativas para módulos como bn.js y canvas
+RUN apk add --no-cache python3 make g++
 
 WORKDIR /app
 
 COPY backend/package*.json backend/
-RUN cd backend && npm ci --omit=dev
+# Instalamos TODAS las deps (no --omit=dev) porque tsx es devDependency
+RUN cd backend && npm ci
 
 COPY backend/ backend/
 COPY anchor/ anchor/
@@ -14,5 +18,4 @@ WORKDIR /app/backend
 ENV NODE_ENV=production
 EXPOSE 3000
 
-# tsx para ejecutar TypeScript directamente (sin build)
 CMD ["npx", "tsx", "src/index.ts"]
