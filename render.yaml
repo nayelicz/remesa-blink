@@ -100,6 +100,6 @@ services:
 databases:
   - name: remesa-blink-db
     databaseName: remesa_blink
-    plan: starter            # gratis — 1 GB
+    plan: free
     region: oregon
 
