@@ -9,6 +9,8 @@
 import { Router, Request, Response } from 'express';
 import { notifyWithLidia, handleUserReply } from '../services/lidiaAgent.js';
 import { reserveSlot } from '../pricing/liquidityService.js';
+import { mintTicket } from '../services/cNFTService.js';
+import { verifyIdentity } from '../services/worldIdService.js';
 import type { PricingDecision } from '../pricing/types.js';
 import pool from '../db/pool.js';  // usa el pool existente del proyecto
 
@@ -117,16 +119,27 @@ router.post('/confirm-ticket', async (req: Request, res: Response) => {
       new Date(windowStart)
     );
 
-    // Guardar ticket en DB
+    // Mint del cNFT ticket en Solana
+    const mintResult = await mintTicket({
+      ticketCode:   code,
+      userWA,
+      walletSolana,
+      amountUSDC,
+      storeName:    'Tienda Aliada',
+      windowStart:  new Date(windowStart),
+      cashbackUSDC: cashbackUSDC ?? 0,
+    });
+
+    // Guardar ticket en DB con el mint address del cNFT
     const result = await pool.query(
       `INSERT INTO withdrawal_tickets
-       (ticket_code, wallet_solana, user_wa, amount_usdc,
+       (ticket_code, cnft_mint, wallet_solana, user_wa, amount_usdc,
         store_id, store_name, zone, source,
         window_start, window_end, cashback_usdc, expires_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
        RETURNING *`,
       [
-        code, walletSolana, userWA, amountUSDC,
+        code, mintResult.signature, walletSolana, userWA, amountUSDC,
         storeId ?? 'spin-001', 'Tienda Aliada', null, 'spin',
         new Date(windowStart),
         new Date(new Date(windowStart).getTime() + 2 * 3600_000),
@@ -135,7 +148,11 @@ router.post('/confirm-ticket', async (req: Request, res: Response) => {
       ]
     );
 
-    return res.json({ ok: true, ticket: { ticketCode: code, ...result.rows[0] } });
+    return res.json({
+      ok: true,
+      ticket: { ticketCode: code, cnftMint: mintResult.signature, ...result.rows[0] },
+      cnft: mintResult,
+    });
   } catch (err) {
     console.error('[LidIA Route] /confirm-ticket error:', err);
     return res.status(500).json({ ok: false, error: (err as Error).message });
@@ -161,17 +178,28 @@ router.get('/ticket/:userWA', async (req: Request, res: Response) => {
 // Marcar ticket como canjeado (World ID verificado en tienda)
 router.post('/redeem', async (req: Request, res: Response) => {
   try {
-    const { ticketCode, worldIdVerified } = req.body;
+    const { ticketCode, worldIdProof } = req.body;
     if (!ticketCode) return res.status(400).json({ ok: false, error: 'ticketCode requerido' });
+
+    // Verificar identidad con World ID antes de liberar el efectivo
+    const identity = await verifyIdentity(ticketCode, worldIdProof);
+    if (!identity.ok) {
+      return res.status(403).json({ ok: false, error: `World ID falló: ${identity.error}` });
+    }
 
     await pool.query(
       `UPDATE withdrawal_tickets
-       SET status='redeemed', world_id_verified=$1, redeemed_at=NOW()
-       WHERE ticket_code=$2`,
-      [worldIdVerified ?? false, ticketCode]
+       SET status='redeemed', world_id_verified=true, redeemed_at=NOW()
+       WHERE ticket_code=$1`,
+      [ticketCode]
     );
 
-    return res.json({ ok: true, message: 'Ticket canjeado correctamente' });
+    return res.json({
+      ok: true,
+      message: 'Ticket canjeado correctamente ✅',
+      nullifierHash: identity.nullifier_hash,
+      mock: identity.mock ?? false,
+    });
   } catch (err) {
     return res.status(500).json({ ok: false, error: (err as Error).message });
   }
