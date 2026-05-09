@@ -1,125 +1,136 @@
-# Deploy Remesa Blink (MVP Hackathon)
+# Deploy Remesa Blink en Render
 
-## Opción 1: Railway (recomendado - ~2 min)
-
-1. **Conectar repo**
-   - [railway.app](https://railway.app) → New Project → Deploy from GitHub
-   - Selecciona `remesa-blink`
-
-2. **Variables de entorno** (Settings → Variables)
-   ```
-   PORT=3000
-   BASE_URL=https://<tu-app>.railway.app
-   BLINKS_BASE_URL=https://<tu-app>.railway.app
-   DATABASE_URL=postgresql://...
-   SOLANA_RPC_URL=https://api.devnet.solana.com
-   KEEPER_PRIVATE_KEY=<base58>
-   PROGRAM_ID=B1G72CcRGHYc1UpG4o51VrJySLiwm3d7tCHbQiSb5vZ2
-   RUN_KEEPER=true
-   ```
-
-3. **Root directory**: `backend` NO — usa la raíz (Dockerfile está en raíz)
-   - O si Railway no usa Docker por defecto: Root = `.` y usa el Dockerfile
-
-4. **Deploy** → Genera URL pública
+## Pasos (15 minutos)
 
 ---
 
-## Opción 2: Render
-
-1. [render.com](https://render.com) → New → Web Service
-2. Conecta repo, selecciona `remesa-blink`
-3. Build: Docker (detecta Dockerfile)
-4. Env vars: igual que arriba
-5. Deploy
+### 1. Crear cuenta en Render
+Ve a https://render.com y regístrate con tu cuenta de GitHub.
 
 ---
 
-## Opción 3: Fly.io
+### 2. Conectar el repositorio
+1. Dashboard → **New** → **Blueprint**
+2. Conecta tu cuenta de GitHub si no lo has hecho
+3. Selecciona el repo **`remesa-blink`**
+4. Render detecta automáticamente el `render.yaml` y crea los 3 servicios:
+   - `remesa-blink-backend` (API + Keeper + LidIA)
+   - `remesa-blink-bot` (WhatsApp Baileys)
+   - `remesa-blink-db` (PostgreSQL)
+
+---
+
+### 3. Configurar variables secretas
+Render no puede leer las vars marcadas como `sync: false` — debes pegarlas manualmente.
+
+Ve a cada servicio → **Environment** y agrega:
+
+#### remesa-blink-backend
+| Variable | Valor |
+|---|---|
+| `KEEPER_PRIVATE_KEY` | Tu clave base58 del keeper |
+| `ELEVENLABS_API_KEY` | Tu API key de ElevenLabs |
+| `ETHERFUSE_API_KEY` | Tu API key de Etherfuse |
+| `ETHERFUSE_WEBHOOK_SECRET` | Secret del webhook Etherfuse |
+| `BOT_INTERNAL_SECRET` | Cualquier string secreto (ej: `remesa2025`) |
+| `MERKLE_TREE_ADDRESS` | Dejar vacío por ahora (se llena después) |
+
+#### remesa-blink-bot
+| Variable | Valor |
+|---|---|
+| `BOT_INTERNAL_SECRET` | El mismo string que pusiste arriba |
+
+---
+
+### 4. Hacer el deploy
+Clic en **Apply** — Render construye los 3 servicios en paralelo (~5 min).
+
+---
+
+### 5. Aplicar el schema de base de datos
+Una vez que el backend esté live, abre la **Shell** del servicio backend en Render:
 
 ```bash
-cd remesa-blink
-fly launch  # crea app
-fly secrets set DATABASE_URL=... KEEPER_PRIVATE_KEY=... 
-fly deploy
+npm run db:schema
 ```
 
 ---
 
-## Checklist pre-deploy
+### 6. Fondear el keeper (Solana devnet)
+En la Shell del backend:
 
-- [ ] `BLINKS_BASE_URL` = URL pública del deploy (los Blinks la necesitan)
-- [ ] `DATABASE_URL` configurada y schema aplicado (`npm run db:schema`)
-- [ ] `KEEPER_PRIVATE_KEY` (base58 del keeper)
-- [ ] `ETHERFUSE_API_KEY` y `ETHERFUSE_API_URL` si usas off-ramp
-- [ ] Root directory: raíz del repo (Dockerfile en raíz)
+```bash
+npm run keeper:airdrop        # muestra la dirección
+npm run keeper:usdc-ata       # crea ATA de USDC
+```
+
+Luego pide SOL en devnet: `solana airdrop 2 <DIR> --url devnet`
+Y USDC en: https://faucet.circle.com
 
 ---
 
-## Post-deploy
+### 7. Crear Merkle Tree para cNFTs (opcional)
+En la Shell del backend:
 
-1. **Airdrop keeper (devnet)**
-   ```bash
-   npm run keeper:airdrop  # obtén dirección
-   solana airdrop 2 <DIR> --url devnet
-   ```
+```bash
+npx tsx -e "import { createMerkleTree } from './src/services/cNFTService.js'; createMerkleTree().then(a => console.log('MERKLE_TREE_ADDRESS=' + a));"
+```
 
-2. **Crear ATA USDC keeper**
-   ```bash
-   npm run keeper:usdc-ata
-   ```
-   Luego fondear desde https://faucet.circle.com
-
-3. **Webhook Etherfuse** (ver sección Etherfuse más abajo)
-
-4. **Verificar**
-   - `https://<tu-url>/health`
-   - `https://<tu-url>/actions.json`
-   - `https://<tu-url>/api/actions/enviar-remesa` (GET = metadata Blink)
+Copia el address → agrégalo como `MERKLE_TREE_ADDRESS` → Manual Deploy.
 
 ---
 
-## BLINKS_BASE_URL
-
-Debe ser la URL pública del deploy (ej. `https://remesa-blink.onrender.com`).
-Los Blinks usan esta URL para que wallets encuentren las acciones.
-
-## Etherfuse (off-ramp USDC -> MXN)
-
-```
-ETHERFUSE_API_KEY=<api_key>
-ETHERFUSE_API_URL=https://api.sand.etherfuse.com   # prod: https://api.etherfuse.com
-ETHERFUSE_WEBHOOK_SECRET=<webhook_secret>
-```
-
-### Configurar webhook Etherfuse (requerido para KYC)
-
-1. Despliega el backend y anota la URL pública (ej. `https://remesa-blink.onrender.com`).
-2. [Etherfuse Dashboard](https://devnet.etherfuse.com) → Webhooks → Create webhook.
-3. URL: `https://<tu-deploy>/api/webhooks/etherfuse`
-4. Eventos: `kyc_updated`, `customer_updated`, `order_updated` (o los que ofrezca).
-5. Copia el **signing secret** (base64) y configúralo como `ETHERFUSE_WEBHOOK_SECRET`.
-6. Redeploy o reinicia el backend para cargar la nueva variable.
-
-**Verificación**: Completa onboarding con un wallet de prueba → el webhook debe actualizar `beneficiarios_etherfuse.kyc_status = 'verified'` cuando Etherfuse apruebe. En sandbox la aprobación suele ser inmediata.
+### 8. Conectar WhatsApp
+1. Ve al servicio `remesa-blink-bot` → **Logs**
+2. Escanea el QR con WhatsApp (Dispositivos vinculados → Vincular dispositivo)
+3. La sesión queda en el disco persistente de Render
 
 ---
 
-## Bot WhatsApp (notificaciones)
+### 9. Configurar webhook Etherfuse
+- URL: `https://remesa-blink-backend.onrender.com/api/webhooks/etherfuse`
+- Eventos: `kyc_updated`, `customer_updated`, `order_updated`
+- Dashboard: https://devnet.etherfuse.com → Webhooks
 
-El keeper puede enviar notificaciones al destinatario cuando ejecuta un pago. Requiere el bot corriendo como segundo servicio.
+---
 
-**Bot** (puerto 3002 interno):
-```
-API_BASE_URL=https://<tu-backend-url>
-BOT_INTERNAL_PORT=3002
-BOT_INTERNAL_SECRET=<secreto_compartido>
-```
+### 10. Verificar
 
-**Backend** (añadir a vars):
-```
-BOT_INTERNAL_URL=http://<bot-service>:3002   # Docker: nombre del servicio; local: localhost:3002
-BOT_INTERNAL_SECRET=<mismo_secreto>
+```bash
+curl https://remesa-blink-backend.onrender.com/health
+curl https://remesa-blink-backend.onrender.com/api/pricing/current-slot
+curl https://remesa-blink-backend.onrender.com/actions.json
 ```
 
-El bot necesita `auth_info` persistido (sesión Baileys). En Railway/Render el disco es efímero; considera volumen persistente o ejecutar el bot localmente durante el hackathon.
+---
+
+## Variables completas (referencia)
+
+```env
+SOLANA_RPC_URL=https://api.devnet.solana.com
+PROGRAM_ID=B1G72CcRGHYc1UpG4o51VrJySLiwm3d7tCHbQiSb5vZ2
+KEEPER_PRIVATE_KEY=<base58>
+ELEVENLABS_API_KEY=<key>
+ELEVENLABS_VOICE_ID=EXAVITQu4vr4xnSDxMaL
+LIDIA_USE_VOICE=true
+MERKLE_TREE_ADDRESS=<address>
+WORLD_ID_APP_ID=app_staging_remesa_blink
+WORLD_ID_ACTION=retiro-efectivo
+ETHERFUSE_API_KEY=<key>
+ETHERFUSE_API_URL=https://api.sand.etherfuse.com
+ETHERFUSE_WEBHOOK_SECRET=<secret>
+BOT_INTERNAL_URL=https://remesa-blink-bot.onrender.com
+BOT_INTERNAL_SECRET=<secreto>
+```
+
+---
+
+## Troubleshooting
+
+**Build falla con @metaplex-foundation** → El `package-lock.json` no incluye las nuevas deps. Corre `npm install` en `backend/` y commitea el lock file.
+
+**Bot pierde sesión** → El disco persistente debe estar montado en `/app/bot/auth_info`. Verifica en Settings → Disks.
+
+**LidIA no genera audio** → Verifica `ELEVENLABS_API_KEY`. Si está vacía, el sistema manda texto automáticamente (fallback).
+
+**db:schema falla** → La DB tarda ~2 min en estar lista después del primer deploy. Espera y reintenta.

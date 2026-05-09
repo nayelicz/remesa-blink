@@ -1,0 +1,33 @@
+# Remesa Blink — Bot WhatsApp (Baileys)
+FROM node:20-alpine
+
+# Baileys necesita estas dependencias nativas
+RUN apk add --no-cache \
+    chromium \
+    nss \
+    freetype \
+    harfbuzz \
+    ca-certificates \
+    ttf-freefont \
+    python3 \
+    make \
+    g++
+
+WORKDIR /app
+
+COPY bot/package*.json bot/
+RUN cd bot && npm ci --omit=dev
+
+COPY bot/ bot/
+
+# Directorio de sesión Baileys (montado como disco en Render)
+RUN mkdir -p /app/bot/auth_info
+
+WORKDIR /app/bot
+
+ENV NODE_ENV=production
+ENV BOT_INTERNAL_PORT=3002
+
+EXPOSE 3002
+
+CMD ["npx", "tsx", "src/index.ts"]
