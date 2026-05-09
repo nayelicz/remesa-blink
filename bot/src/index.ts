@@ -131,6 +131,41 @@ function startInternalServer() {
     }
   });
 
+  // Endpoint para enviar audio de LidIA (ElevenLabs MP3)
+  app.post("/internal/send-audio", async (req, res) => {
+    const auth = req.headers["authorization"] || req.body?.secret;
+    const expected = BOT_INTERNAL_SECRET ? `Bearer ${BOT_INTERNAL_SECRET}` : null;
+    if (expected && auth !== expected) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    const { to, audioPath } = req.body;
+    if (!to || !audioPath) {
+      return res.status(400).json({ error: "to y audioPath requeridos" });
+    }
+
+    if (!sock) {
+      return res.status(503).json({ error: "Bot no conectado" });
+    }
+
+    try {
+      const fs = await import("fs");
+      if (!fs.existsSync(audioPath)) {
+        return res.status(404).json({ error: "Archivo de audio no encontrado" });
+      }
+      const jid = toJid(to);
+      await sock.sendMessage(jid, {
+        audio: { url: audioPath },
+        mimetype: "audio/mpeg",
+        ptt: true,   // se envía como nota de voz (PTT)
+      });
+      res.json({ ok: true });
+    } catch (err) {
+      log(`[Bot] Error enviando audio a ${to}: ${(err as Error).message}`, "\x1b[31m");
+      res.status(500).json({ error: (err as Error).message });
+    }
+  });
+
   app.listen(BOT_INTERNAL_PORT, () => {
     log(`[Bot] Internal API en :${BOT_INTERNAL_PORT}`, "\x1b[36m");
   });
@@ -269,6 +304,36 @@ async function handleCommand(
 
   if (text === "/soporte") {
     await send("Contacta a soporte: soporte@remesablink.com");
+    return;
+  }
+
+  // Respuestas sí/no para LidIA (cuando el usuario decide sobre su retiro)
+  const lidiaReplies = ['si','sí','yes','ok','dale','va','bueno','claro','no','nop','nope','ahora'];
+  if (lidiaReplies.includes(text.trim().toLowerCase())) {
+    try {
+      await axios.post(`${API_BASE}/api/lidia/reply`, { userWA: wa, reply: text.trim() });
+    } catch (_) {
+      // Si no hay decisión pendiente, continuar normalmente
+    }
+    return;
+  }
+
+  // Ver tickets activos de retiro
+  if (text === "/retiro" || text === "/mi-ticket") {
+    try {
+      const res = await axios.get(`${API_BASE}/api/lidia/ticket/${wa}`);
+      const tickets = res.data.tickets;
+      if (!tickets || tickets.length === 0) {
+        await send("No tienes tickets de retiro activos.\n\nCuando recibas una remesa, LidIA te enviará las opciones de retiro 🎙");
+      } else {
+        const lines = tickets.map((t: { ticket_code: string; store_name: string; window_start: string; cashback_usdc: number }) =>
+          `🎟 *${t.ticket_code}*\n📍 ${t.store_name}\n🕐 ${new Date(t.window_start).toLocaleString('es-MX', { timeZone: 'America/Mexico_City' })}\n💰 Cashback: ${t.cashback_usdc} USDC`
+        );
+        await send(`*Tus tickets de retiro activos:*\n\n${lines.join('\n\n')}`);
+      }
+    } catch (_) {
+      await send("Error al consultar tickets. Intenta de nuevo.");
+    }
     return;
   }
 
