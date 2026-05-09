@@ -13,7 +13,7 @@ services:
     runtime: docker
     dockerfilePath: ./Dockerfile
     region: oregon
-    plan: starter          # gratis para hackathon
+    plan: free
     healthCheckPath: /health
     envVars:
       - key: NODE_ENV
@@ -83,11 +83,9 @@ services:
     runtime: docker
     dockerfilePath: ./Dockerfile.bot
     region: oregon
-    plan: starter
-    disk:
-      name: baileys-auth
-      mountPath: /app/bot/auth_info   # sesión WhatsApp persistente
-      sizeGB: 1
+    plan: free
+    # NOTA: sin disco persistente (plan free) — si Render reinicia el contenedor
+    # hay que re-escanear el QR de WhatsApp. Suficiente para hackathon.
     envVars:
       - key: NODE_ENV
         value: production
@@ -96,10 +94,7 @@ services:
       - key: BOT_INTERNAL_SECRET
         sync: false
       - key: API_BASE_URL
-        fromService:
-          name: remesa-blink-backend
-          type: web
-          property: host
+        sync: false          # https://remesa-blink-backend.onrender.com
 
 # ── Base de datos PostgreSQL gestionada ───────────────────────────────────────
 databases:
