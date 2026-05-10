@@ -4,7 +4,6 @@
  */
 import "dotenv/config";
 import express from "express";
-import { actionCorsMiddleware } from "@solana/actions";
 import suscripcionesRouter from "./routes/suscripciones.js";
 import cashbackRouter from "./routes/cashback.js";
 import etherfuseRouter from "./routes/etherfuse.js";
@@ -16,8 +15,16 @@ import lidiaRouter from "./routes/lidia.js";
 const app = express();
 app.use(express.json());
 
-app.use(actionCorsMiddleware({ actionVersion: 1 }));
-app.options("*", (_req, res) => res.sendStatus(204));
+// CORS abierto — requerido para Blinks y para las APIs de LidIA
+app.use((_req, res, next) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Content-Encoding, Accept-Encoding, X-Action-Version, X-Blockchain-Ids');
+  res.setHeader('X-Action-Version', '1');
+  res.setHeader('X-Blockchain-Ids', 'solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1');
+  next();
+});
+app.options('*', (_req, res) => res.sendStatus(204));
 
 app.get("/health", (_req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });
