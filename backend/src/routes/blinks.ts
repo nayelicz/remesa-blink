@@ -42,6 +42,7 @@ router.get("/actions.json", (_req, res) => {
   const base = getBaseUrl();
   res.json({
     actions: [
+      { url: `${base}/api/actions/lidia-retiro`, label: "LidIA — Retiro Programado", description: "Retira tu remesa con cashback inteligente — Dynamic Pricing + cNFT ticket" },
       { url: `${base}/api/actions/remesa`, label: "Remesa", description: "Transferir SOL a una wallet de destino (alias de enviar-remesa)" },
       { url: `${base}/api/actions/enviar-remesa`, label: "Enviar Remesa SOL", description: "Transferir SOL a una wallet de destino" },
       { url: `${base}/api/actions/enviar-remesa-usdc`, label: "Enviar Remesa USDC", description: "Transferir USDC a una wallet de destino" },

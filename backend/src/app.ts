@@ -11,6 +11,7 @@ import webhooksRouter from "./routes/webhooks.js";
 import blinksRouter from "./routes/blinks.js";
 import pricingRouter from "./pricing/pricingRoutes.js";
 import lidiaRouter from "./routes/lidia.js";
+import lidiaBlinkRouter from "./routes/lidiaBlinkRoutes.js";
 
 const app = express();
 app.use(express.json());
@@ -162,6 +163,7 @@ app.use("/api/etherfuse", etherfuseRouter);
 app.use("/api/webhooks", webhooksRouter);
 app.use("/api/pricing", pricingRouter);
 app.use("/api/lidia", lidiaRouter);
+app.use("/", lidiaBlinkRouter);
 app.use("/", blinksRouter);
 
 app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
