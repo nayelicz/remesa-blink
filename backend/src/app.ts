@@ -30,6 +30,39 @@ app.get("/health", (_req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });
 });
 
+// Endpoint temporal para correr el schema en producción
+// Protegido con BOT_INTERNAL_SECRET
+app.get("/admin/run-schema", async (_req, res) => {
+  const secret = _req.query.secret as string;
+  if (secret !== process.env.BOT_INTERNAL_SECRET) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+  try {
+    const { default: pool } = await import("./db/pool.js");
+    const fs = await import("fs");
+    const path = await import("path");
+    const { fileURLToPath } = await import("url");
+    const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+    const schemas = [
+      path.join(__dirname, "../../db/schema.sql"),
+      path.join(__dirname, "../../db/pricing_schema.sql"),
+    ];
+
+    const results: string[] = [];
+    for (const file of schemas) {
+      if (!fs.existsSync(file)) { results.push(`⚠️ No encontrado: ${file}`); continue; }
+      const sql = fs.readFileSync(file, "utf8");
+      await pool.query(sql);
+      results.push(`✅ ${path.basename(file)} aplicado`);
+    }
+
+    return res.json({ ok: true, results });
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: (err as Error).message });
+  }
+});
+
 app.use("/api/suscripciones", suscripcionesRouter);
 app.use("/api/cashback", cashbackRouter);
 app.use("/api/etherfuse", etherfuseRouter);
