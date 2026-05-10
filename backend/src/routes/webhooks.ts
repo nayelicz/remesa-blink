@@ -1,14 +1,101 @@
 /**
- * Webhooks - Etherfuse, etc.
+ * Webhooks - Etherfuse + Helius
  */
 import { Router } from "express";
 import { createHmac, timingSafeEqual } from "crypto";
 import canonicalize from "canonicalize";
 import pool from "../db/pool.js";
 import { enviarMensaje } from "../services/notificaciones.js";
+import { notifyWithLidia } from "../services/lidiaAgent.js";
 
 const router = Router();
-const WEBHOOK_SECRET = process.env.ETHERFUSE_WEBHOOK_SECRET || "";
+const WEBHOOK_SECRET  = process.env.ETHERFUSE_WEBHOOK_SECRET || "";
+const HELIUS_AUTH_KEY = process.env.HELIUS_WEBHOOK_AUTH || ""; // opcional — para validar origen
+const PROGRAM_ID      = process.env.PROGRAM_ID || "B1G72CcRGHYc1UpG4o51VrJySLiwm3d7tCHbQiSb5vZ2";
+
+// ── Webhook Helius — detecta transacciones del programa Anchor ────────────────
+// Helius llama este endpoint cada vez que hay una tx de nuestro Program ID
+router.post("/helius", async (req, res) => {
+  // Validar auth header si está configurado
+  if (HELIUS_AUTH_KEY) {
+    const auth = req.headers["authorization"];
+    if (auth !== `Bearer ${HELIUS_AUTH_KEY}`) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+  }
+
+  try {
+    const events = Array.isArray(req.body) ? req.body : [req.body];
+
+    for (const event of events) {
+      // Solo procesar transacciones exitosas
+      if (event.transactionError) {
+        console.log("[Helius] Tx con error, ignorando:", event.signature);
+        continue;
+      }
+
+      const signature = event.signature;
+      const accounts  = event.accountData ?? event.accounts ?? [];
+
+      console.log(`[Helius] Nueva tx detectada: ${signature}`);
+
+      // Buscar si esta tx corresponde a una suscripción activa en nuestra DB
+      // Buscamos la wallet del destinatario en las cuentas de la transacción
+      for (const account of accounts) {
+        const walletSolana = account.account ?? account.pubkey;
+        if (!walletSolana) continue;
+
+        // Buscar suscripción activa para esta wallet
+        const result = await pool.query(
+          `SELECT s.*, b.telefono_wa as user_wa, b.zona as zone
+           FROM suscripciones s
+           LEFT JOIN beneficiarios_etherfuse b ON b.destinatario_solana = s.destinatario_solana
+           WHERE s.destinatario_solana = $1 AND s.activa = true
+           LIMIT 1`,
+          [walletSolana]
+        );
+
+        if (result.rows.length === 0) continue;
+
+        const suscripcion = result.rows[0];
+        const userWA      = suscripcion.user_wa;
+        const amountUSDC  = suscripcion.monto / 1_000_000; // lamports → USDC
+
+        console.log(`[Helius] Remesa detectada para ${userWA} — ${amountUSDC} USDC`);
+
+        // Disparar LidIA — genera oferta de cashback y envía Blink por WhatsApp
+        if (userWA) {
+          const blinkUrl = `solana-action:${process.env.BLINKS_BASE_URL}/api/actions/lidia-retiro?amount=${amountUSDC}&wallet=${walletSolana}`;
+
+          // 1. LidIA genera audio y mensaje de voz
+          await notifyWithLidia({
+            walletSolana,
+            userWA,
+            amountUSDC,
+            zone:        suscripcion.zone ?? "",
+            isUrgent:    false,
+            suscripcionId: suscripcion.id,
+          });
+
+          // 2. Enviar el Blink URL como mensaje separado
+          await enviarMensaje(
+            userWA,
+            `🎟 *Tu enlace de retiro seguro:*\n\n${blinkUrl}\n\n_Preséntalo en la tienda o ábrelo con tu wallet de Solana_`
+          );
+
+          console.log(`[Helius] Blink enviado a ${userWA}: ${blinkUrl}`);
+        }
+
+        break; // Una notificación por tx
+      }
+    }
+
+    return res.sendStatus(200);
+  } catch (err) {
+    console.error("[Helius] Error procesando webhook:", err);
+    return res.sendStatus(200); // Siempre 200 para que Helius no reintente
+  }
+});
 
 function verifyEtherfuseSignature(body: object, signatureHeader: string): boolean {
   if (!WEBHOOK_SECRET || !signatureHeader) return false;
