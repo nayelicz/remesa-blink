@@ -45,8 +45,8 @@ app.get("/admin/run-schema", async (_req, res) => {
     const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
     const schemas = [
-      path.join(__dirname, "../../db/schema.sql"),
-      path.join(__dirname, "../../db/pricing_schema.sql"),
+      "/app/db/schema.sql",
+      "/app/db/pricing_schema.sql",
     ];
 
     const results: string[] = [];

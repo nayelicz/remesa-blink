@@ -12,6 +12,7 @@ RUN cd backend && npm ci
 
 COPY backend/ backend/
 COPY anchor/ anchor/
+COPY db/ db/
 
 WORKDIR /app/backend
 
