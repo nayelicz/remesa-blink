@@ -13,8 +13,14 @@ import pricingRouter from "./pricing/pricingRoutes.js";
 import lidiaRouter from "./routes/lidia.js";
 import lidiaBlinkRouter from "./routes/lidiaBlinkRoutes.js";
 
+import { fileURLToPath } from "url";
+import path from "path";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
 const app = express();
 app.use(express.json());
+app.use(express.static(path.join(__dirname)));
 
 // CORS abierto — requerido para Blinks y para las APIs de LidIA
 app.use((_req, res, next) => {
