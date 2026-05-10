@@ -65,7 +65,8 @@ router.post("/helius", async (req, res) => {
 
         // Disparar LidIA — genera oferta de cashback y envía Blink por WhatsApp
         if (userWA) {
-          const blinkUrl = `solana-action:${process.env.BLINKS_BASE_URL}/api/actions/lidia-retiro?amount=${amountUSDC}&wallet=${walletSolana}`;
+          const blinkUrl   = `solana-action:${process.env.BLINKS_BASE_URL}/api/actions/lidia-retiro?amount=${amountUSDC}&wallet=${walletSolana}`;
+          const previewUrl = `${process.env.BLINKS_BASE_URL}/api/actions/lidia-retiro/preview?amount=${amountUSDC}&wallet=${walletSolana}`;
 
           // 1. LidIA genera audio y mensaje de voz
           await notifyWithLidia({
@@ -77,10 +78,11 @@ router.post("/helius", async (req, res) => {
             suscripcionId: suscripcion.id,
           });
 
-          // 2. Enviar el Blink URL como mensaje separado
+          // 2. Enviar preview URL (WhatsApp genera el card visual con OG tags)
+          //    seguido del Blink URL para wallets compatibles
           await enviarMensaje(
             userWA,
-            `🎟 *Tu enlace de retiro seguro:*\n\n${blinkUrl}\n\n_Preséntalo en la tienda o ábrelo con tu wallet de Solana_`
+            `🎟 *Tu enlace de retiro seguro:*\n\n${previewUrl}\n\n_O ábrelo directamente con tu wallet:_\n${blinkUrl}`
           );
 
           console.log(`[Helius] Blink enviado a ${userWA}: ${blinkUrl}`);

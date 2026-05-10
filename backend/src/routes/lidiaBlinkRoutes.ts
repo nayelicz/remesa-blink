@@ -22,7 +22,81 @@ const router = Router();
 const RPC_URL  = process.env.SOLANA_RPC_URL || "https://api.devnet.solana.com";
 const BASE_URL = process.env.BLINKS_BASE_URL || process.env.BASE_URL || "http://localhost:3000";
 
-// ── PASO 1: GET — Mostrar oferta de LidIA ─────────────────────────────────────
+// ── GET /api/actions/lidia-retiro/preview ────────────────────────────────────
+// Página HTML con OpenGraph tags — genera el preview visual en WhatsApp
+// WhatsApp lee estos tags cuando preview_url: true está activo
+router.get("/api/actions/lidia-retiro/preview", async (req: Request, res: Response) => {
+  try {
+    const amountUSDC = parseFloat(req.query.amount as string) || 50;
+    const zone       = (req.query.zone as string) || "";
+    const wallet     = (req.query.wallet as string) || "";
+
+    const decision = await computePricing({
+      walletSolana: wallet || "11111111111111111111111111111111",
+      amountUSDC,
+      userWA: "",
+      zone,
+      isUrgent: false,
+    });
+
+    const store    = decision.recommendedStores[0];
+    const hora     = decision.optimalWindowStart.toLocaleTimeString("es-MX", {
+      hour: "2-digit", minute: "2-digit", timeZone: "America/Mexico_City",
+    });
+    const amountMXN  = (amountUSDC * 17.20).toFixed(0);
+    const blinkUrl   = `solana-action:${BASE_URL}/api/actions/lidia-retiro?amount=${amountUSDC}&zone=${encodeURIComponent(zone)}${wallet ? `&wallet=${wallet}` : ""}`;
+    const description = `💰 $${amountUSDC} USDC (~$${amountMXN} MXN) · ✨ +$${decision.cashbackUSDC} USDC cashback si retiras a las ${hora} · 📍 ${store?.storeName ?? "Tienda cercana"}`;
+
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    return res.send(`<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+
+  <!-- OpenGraph — WhatsApp lee estos tags para el preview visual -->
+  <meta property="og:type"        content="website"/>
+  <meta property="og:url"         content="${BASE_URL}/api/actions/lidia-retiro/preview?amount=${amountUSDC}&zone=${encodeURIComponent(zone)}"/>
+  <meta property="og:title"       content="🎙 LidIA — Retiro de $${amountUSDC} USDC (~$${amountMXN} MXN)"/>
+  <meta property="og:description" content="${description}"/>
+  <meta property="og:image"       content="${BASE_URL}/lidia-icon.png"/>
+  <meta property="og:image:width" content="512"/>
+  <meta property="og:image:height"content="512"/>
+
+  <!-- Twitter / Telegram -->
+  <meta name="twitter:card"        content="summary_large_image"/>
+  <meta name="twitter:title"       content="🎙 LidIA — Retiro de $${amountUSDC} USDC"/>
+  <meta name="twitter:description" content="${description}"/>
+  <meta name="twitter:image"       content="${BASE_URL}/lidia-icon.png"/>
+
+  <title>LidIA — Retiro de $${amountUSDC} USDC</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, sans-serif; background: #0f0f0f; color: #fff; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 1.5rem; }
+    .card { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 16px; padding: 2rem; max-width: 420px; width: 100%; text-align: center; }
+    img { width: 100px; height: 100px; border-radius: 50%; margin-bottom: 1rem; }
+    h1 { font-size: 1.2rem; font-weight: 700; margin-bottom: 0.5rem; background: linear-gradient(90deg, #9945FF, #14F195); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+    p { color: #888; font-size: 0.9rem; line-height: 1.6; margin-bottom: 1.5rem; }
+    .blink-btn { display: block; background: #9945FF; color: #fff; text-decoration: none; padding: 0.85rem 1.5rem; border-radius: 10px; font-weight: 600; font-size: 0.95rem; margin-bottom: 0.75rem; }
+    .cashback { background: #0d2e1a; border: 1px solid #14F195; border-radius: 8px; padding: 0.75rem; color: #14F195; font-size: 0.85rem; margin-bottom: 1rem; }
+    .store { color: #555; font-size: 0.8rem; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <img src="${BASE_URL}/lidia-icon.png" alt="LidIA"/>
+    <h1>Retiro de $${amountUSDC} USDC</h1>
+    <p>~$${amountMXN} MXN disponibles para retirar</p>
+    <div class="cashback">✨ Cashback disponible: +$${decision.cashbackUSDC} USDC si retiras a las ${hora}</div>
+    <a class="blink-btn" href="${blinkUrl}">🎟 Abrir con wallet Solana</a>
+    <div class="store">📍 ${store?.storeName ?? "Tienda cercana"} · ${store?.zone ?? ""}</div>
+  </div>
+</body>
+</html>`);
+  } catch (err) {
+    return res.status(500).json({ error: (err as Error).message });
+  }
+});
 // URL: /api/actions/lidia-retiro?amount=50&zone=Roma+Norte
 router.get("/api/actions/lidia-retiro", async (req: Request, res: Response) => {
   try {
